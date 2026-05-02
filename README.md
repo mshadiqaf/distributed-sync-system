@@ -419,4 +419,5 @@ Panduan lengkap: [docs/deployment_guide.md](docs/deployment_guide.md)
 
 - [docs/architecture.md](docs/architecture.md) — Arsitektur sistem, diagram, penjelasan protokol
 - [docs/api_spec.md](docs/api_spec.md) — Spesifikasi API lengkap dengan contoh request/response
+- [docs/api_spec.yaml](docs/api_spec.yaml) — OpenAPI 3.0 Specification (Swagger/Postman compatible)
 - [docs/deployment_guide.md](docs/deployment_guide.md) — Panduan deployment dan troubleshooting

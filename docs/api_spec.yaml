@@ -1,0 +1,685 @@
+openapi: "3.0.3"
+info:
+  title: Distributed Synchronization System API
+  description: |
+    API untuk sistem sinkronisasi terdistribusi yang mengimplementasikan
+    Raft Consensus, Distributed Lock Manager, Distributed Queue (Consistent Hashing),
+    dan MESI Cache Coherence.
+  version: "1.0.0"
+  contact:
+    name: Muhammad Shadiq Al-Fatiy
+    
+servers:
+  - url: http://localhost:8001
+    description: Node 1
+  - url: http://localhost:8002
+    description: Node 2
+  - url: http://localhost:8003
+    description: Node 3
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key untuk autentikasi (role writer atau admin)
+    NodeSecret:
+      type: apiKey
+      in: header
+      name: X-Node-Secret
+      description: Shared secret untuk komunikasi antar-node (internal)
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        node_id:
+          type: string
+          example: node1
+        status:
+          type: string
+          example: healthy
+        uptime_seconds:
+          type: number
+          example: 42.5
+        port:
+          type: integer
+          example: 8001
+        role:
+          type: string
+          example: leader
+        leader_id:
+          type: string
+          example: node1
+
+    RaftState:
+      type: object
+      properties:
+        node_id:
+          type: string
+          example: node1
+        role:
+          type: string
+          enum: [leader, follower, candidate]
+          example: leader
+        current_term:
+          type: integer
+          example: 3
+        leader_id:
+          type: string
+          example: node1
+        log_length:
+          type: integer
+          example: 15
+        commit_index:
+          type: integer
+          example: 15
+
+    LockAcquireRequest:
+      type: object
+      required: [resource, client_id]
+      properties:
+        resource:
+          type: string
+          description: Nama resource yang dikunci
+          example: database_table_users
+        client_id:
+          type: string
+          description: Identitas client
+          example: service-A
+        lock_type:
+          type: string
+          enum: [shared, exclusive]
+          default: exclusive
+          example: exclusive
+        ttl:
+          type: number
+          default: 30.0
+          description: Masa hidup kunci (detik)
+          example: 30.0
+        timeout:
+          type: number
+          default: 10.0
+          description: Batas tunggu akuisisi (detik)
+          example: 10.0
+
+    LockReleaseRequest:
+      type: object
+      required: [resource, client_id]
+      properties:
+        resource:
+          type: string
+          example: database_table_users
+        client_id:
+          type: string
+          example: service-A
+
+    LockGrantedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: granted
+        resource:
+          type: string
+          example: database_table_users
+        client_id:
+          type: string
+          example: service-A
+        lock_type:
+          type: string
+          example: exclusive
+        granted_at:
+          type: number
+          example: 1704067200.0
+        ttl:
+          type: number
+          example: 30.0
+
+    QueuePushRequest:
+      type: object
+      properties:
+        topic:
+          type: string
+          default: default
+          example: order-processing
+        data:
+          description: Payload pesan (JSON apapun)
+          example: { "order_id": 123, "amount": 50000 }
+        producer_id:
+          type: string
+          default: anonymous
+          example: payment-service
+        priority:
+          type: integer
+          default: 0
+          example: 0
+
+    QueueConsumeRequest:
+      type: object
+      required: [topic, consumer_id]
+      properties:
+        topic:
+          type: string
+          example: order-processing
+        consumer_id:
+          type: string
+          example: worker-1
+
+    QueueAckRequest:
+      type: object
+      required: [message_id, consumer_id]
+      properties:
+        message_id:
+          type: string
+          example: a1b2c3d4
+        consumer_id:
+          type: string
+          example: worker-1
+
+    CacheWriteRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          description: Nilai yang ditulis ke cache
+          example: John Doe
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: "Unauthorized. Provide X-API-Key header."
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Health check node
+      description: Cek status kesehatan node. Tidak memerlukan autentikasi.
+      responses:
+        "200":
+          description: Node sehat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /peers:
+    get:
+      tags: [System]
+      summary: Daftar peer
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Daftar peer yang dikenal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node_id:
+                    type: string
+                  peers:
+                    type: array
+                    items:
+                      type: string
+                  peer_count:
+                    type: integer
+
+  /metrics:
+    get:
+      tags: [System]
+      summary: Metrik performa node
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Metrik lengkap
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /cluster/status:
+    get:
+      tags: [System]
+      summary: Status seluruh kluster
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Status peer dan konektivitas
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /raft/state:
+    get:
+      tags: [Raft Consensus]
+      summary: Status Raft saat ini
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Role, term, dan leader ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RaftState"
+
+  /raft/request-vote:
+    post:
+      tags: [Raft Consensus]
+      summary: RPC pemilihan (internal)
+      description: Digunakan oleh node Candidate untuk meminta suara. Memerlukan Node Secret.
+      security:
+        - NodeSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                term:
+                  type: integer
+                candidate_id:
+                  type: string
+                last_log_index:
+                  type: integer
+                last_log_term:
+                  type: integer
+      responses:
+        "200":
+          description: Hasil voting
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  term:
+                    type: integer
+                  vote_granted:
+                    type: boolean
+
+  /raft/append-entries:
+    post:
+      tags: [Raft Consensus]
+      summary: RPC heartbeat dan replikasi log (internal)
+      security:
+        - NodeSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                term:
+                  type: integer
+                leader_id:
+                  type: string
+                prev_log_index:
+                  type: integer
+                prev_log_term:
+                  type: integer
+                entries:
+                  type: array
+                  items:
+                    type: object
+                leader_commit:
+                  type: integer
+      responses:
+        "200":
+          description: Hasil replikasi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  term:
+                    type: integer
+                  success:
+                    type: boolean
+
+  /lock/acquire:
+    post:
+      tags: [Lock Manager]
+      summary: Akuisisi kunci terdistribusi
+      description: |
+        Mengakuisisi kunci shared atau exclusive pada resource.
+        Hanya diproses oleh Leader Raft. Jika bukan leader, akan mengembalikan leader_id.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockAcquireRequest"
+      responses:
+        "200":
+          description: Hasil akuisisi (granted/timeout/deadlock/denied)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockGrantedResponse"
+
+  /lock/release:
+    post:
+      tags: [Lock Manager]
+      summary: Lepaskan kunci
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockReleaseRequest"
+      responses:
+        "200":
+          description: Kunci dilepaskan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: released
+                  resource:
+                    type: string
+                  client_id:
+                    type: string
+
+  /lock/status:
+    get:
+      tags: [Lock Manager]
+      summary: Semua kunci aktif
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Daftar kunci aktif dan waiting
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /lock/deadlocks:
+    get:
+      tags: [Lock Manager]
+      summary: Analisis wait-for graph
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Wait-for graph untuk deteksi deadlock
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /queue/push:
+    post:
+      tags: [Queue System]
+      summary: Kirim pesan ke topik
+      description: |
+        Pesan dirouting ke node pemilik topik berdasarkan consistent hash ring.
+        Jika node target tidak tersedia, pesan disimpan secara lokal (fallback).
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueuePushRequest"
+      responses:
+        "200":
+          description: Pesan diterima
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: queued
+                  message_id:
+                    type: string
+                    example: a1b2c3d4
+                  topic:
+                    type: string
+                  node:
+                    type: string
+                  queue_depth:
+                    type: integer
+
+  /queue/consume:
+    post:
+      tags: [Queue System]
+      summary: Ambil pesan dari topik
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueueConsumeRequest"
+      responses:
+        "200":
+          description: Pesan dikirim atau antrean kosong
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /queue/ack:
+    post:
+      tags: [Queue System]
+      summary: Konfirmasi pesan sudah diproses
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueueAckRequest"
+      responses:
+        "200":
+          description: Pesan di-ack
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: acked
+                  message_id:
+                    type: string
+                  topic:
+                    type: string
+
+  /queue/status:
+    get:
+      tags: [Queue System]
+      summary: Status antrean dan topik
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Status semua topik
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /queue/ring:
+    get:
+      tags: [Queue System]
+      summary: Informasi hash ring
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Distribusi hash ring
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /cache/{key}:
+    get:
+      tags: [Cache MESI]
+      summary: Baca dari cache (protokol MESI)
+      description: |
+        Membaca nilai dari cache terdistribusi. Jika cache miss, akan mengirim
+        BusRd (snoop read) ke peer, lalu cek Redis sebagai fallback.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "user:42"
+      responses:
+        "200":
+          description: "Hasil baca: hit, miss_peer, miss_store, atau not_found"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [hit, miss_peer, miss_store, not_found]
+                  key:
+                    type: string
+                  value: {}
+                  state:
+                    type: string
+                    enum: [M, E, S, I]
+                  node:
+                    type: string
+
+    put:
+      tags: [Cache MESI]
+      summary: Tulis ke cache (protokol MESI)
+      description: |
+        Menulis nilai ke cache. Mengirim BusRdX (snoop invalidate) ke semua peer
+        terlebih dahulu, lalu menyimpan dengan state Modified (M).
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "user:42"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CacheWriteRequest"
+      responses:
+        "200":
+          description: Nilai ditulis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: written
+                  key:
+                    type: string
+                  value: {}
+                  state:
+                    type: string
+                    example: M
+                  node:
+                    type: string
+
+    delete:
+      tags: [Cache MESI]
+      summary: Invalidasi entry cache
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entry diinvalidasi
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /cache-stats:
+    get:
+      tags: [Cache MESI]
+      summary: Statistik cache dan distribusi state MESI
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Statistik cache
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /cache-entries:
+    get:
+      tags: [Cache MESI]
+      summary: Semua entry cache dengan state
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Daftar entry cache
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /audit/logs:
+    get:
+      tags: [Security]
+      summary: Riwayat akses (admin only)
+      description: Mengembalikan 100 entri audit log terakhir. Memerlukan Admin API Key.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Audit log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
