@@ -13,18 +13,20 @@ from src.utils.config import get_settings
 from src.utils.metrics import init_metrics, get_metrics
 from src.communication.message_passing import NodeClient
 from src.communication.failure_detector import FailureDetector
+from src.consensus.raft import RaftNode
 
 logger = logging.getLogger(__name__)
 
 # Global references for shared components
 node_client: NodeClient = None
 failure_detector: FailureDetector = None
+raft_node: RaftNode = None
 
 
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application for a distributed node."""
 
-    global node_client, failure_detector
+    global node_client, failure_detector, raft_node
 
     settings = get_settings()
     metrics = init_metrics(settings.node_id)
@@ -39,18 +41,31 @@ def create_app() -> FastAPI:
         failure_threshold=3,
     )
 
+    # Initialize Raft consensus
+    raft_node = RaftNode(
+        node_id=settings.node_id,
+        peers=peers,
+        node_client=node_client,
+        redis_url=settings.redis_url,
+        election_timeout_min=settings.election_timeout_min,
+        election_timeout_max=settings.election_timeout_max,
+        heartbeat_interval=settings.heartbeat_interval,
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Application startup and shutdown events."""
         logger.info(f"Node {settings.node_id} starting on port {settings.node_port}")
         logger.info(f"Peers: {peers}")
 
-        # Start failure detector
+        # Start failure detector and Raft
         await failure_detector.start()
+        await raft_node.start()
 
         yield
 
         # Cleanup
+        await raft_node.stop()
         await failure_detector.stop()
         await node_client.close()
         logger.info(f"Node {settings.node_id} shutting down")
@@ -90,7 +105,8 @@ def create_app() -> FastAPI:
             "status": "healthy",
             "uptime_seconds": round(metrics.uptime, 2),
             "port": settings.node_port,
-            "role": metrics.raft_metrics.get("role", "initializing"),
+            "role": raft_node.role.value if raft_node else "initializing",
+            "leader_id": raft_node.leader_id if raft_node else None,
         }
 
     @app.get("/peers", tags=["System"])
@@ -116,5 +132,24 @@ def create_app() -> FastAPI:
             "alive_peers": failure_detector.get_alive_peers(),
             "total_peers": len(peers),
         }
+
+    # --- Raft Consensus Endpoints ---
+
+    @app.post("/raft/request-vote", tags=["Raft"])
+    async def request_vote(request: Request):
+        """Handle RequestVote RPC from Raft candidates."""
+        data = await request.json()
+        return await raft_node.handle_request_vote(data)
+
+    @app.post("/raft/append-entries", tags=["Raft"])
+    async def append_entries(request: Request):
+        """Handle AppendEntries RPC (heartbeat + log replication)."""
+        data = await request.json()
+        return await raft_node.handle_append_entries(data)
+
+    @app.get("/raft/state", tags=["Raft"])
+    async def get_raft_state():
+        """Get current Raft consensus state."""
+        return raft_node.get_state()
 
     return app
