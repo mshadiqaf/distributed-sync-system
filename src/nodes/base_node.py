@@ -185,6 +185,16 @@ def create_app() -> FastAPI:
             "total_peers": len(peers),
         }
 
+    @app.get("/geo/latency", tags=["System"])
+    async def get_geo_latency():
+        """Get the node's geographical region and latency matrix."""
+        from src.geo.latency import LATENCY_MATRIX
+        return {
+            "node_id": settings.node_id,
+            "node_region": settings.node_region,
+            "latency_matrix": LATENCY_MATRIX,
+        }
+
     # --- Raft Consensus Endpoints ---
 
     @app.post("/raft/request-vote", tags=["Raft"])
