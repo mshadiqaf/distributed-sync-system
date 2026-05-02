@@ -48,7 +48,12 @@ Setiap node menjalankan image Docker yang sama dengan konfigurasi berbeda, membe
 
 ## Fitur Utama
 
-### 1. Raft Consensus (Pemilihan Pemimpin)
+### 1. Geo-Distributed Multi-Region (Baru)
+- Simulasi latensi geografis antar node di 3 region: `ap-jakarta`, `ap-singapore`, dan `ap-tokyo`
+- Penundaan jaringan (network delay) buatan menggunakan middleware berbasis header `X-Source-Region`
+- API Endpoint untuk cek status region dan matriks latensi
+
+### 2. Raft Consensus (Pemilihan Pemimpin)
 - Pemilihan leader dengan election timeout acak (1500–3000 ms)
 - Replikasi log operasi kunci melalui AppendEntries RPC
 - Heartbeat setiap 500 ms untuk mencegah re-election

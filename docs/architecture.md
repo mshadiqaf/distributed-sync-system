@@ -31,6 +31,21 @@ Setiap node menjalankan aplikasi FastAPI yang sama (entry point: `src/main.py`).
 
 ---
 
+## 0. Geo-Distributed Multi-Region (Simulasi Latensi)
+
+### Tujuan
+Sistem ini disimulasikan berjalan di atas tiga wilayah (region) cloud di Asia untuk mendemonstrasikan keandalan protokol di atas jaringan berlatensi tinggi:
+1. `ap-jakarta` (Node 1)
+2. `ap-singapore` (Node 2)
+3. `ap-tokyo` (Node 3)
+
+### Implementasi
+1. **Header Injeksi**: Setiap request internal antar-node menyematkan asal region di header HTTP `X-Source-Region`.
+2. **Geo Middleware**: FastAPI Middleware (`src/main.py:geo_latency_middleware`) mencegat *incoming request*, membaca region pengirim, dan mengecek `LATENCY_MATRIX` di `src/geo/latency.py`.
+3. **Async Sleep**: Middleware melakukan `await asyncio.sleep(latency)` sebelum meneruskan request, meniru network delay nyata (misalnya ~100ms antara Jakarta dan Tokyo).
+
+---
+
 ## 1. Konsensus Raft (`src/consensus/raft.py`)
 
 ### Tujuan
@@ -75,7 +90,7 @@ Follower → Candidate → Leader
 
 ---
 
-## 2. Distributed Lock Manager (`src/nodes/lock_manager.py`)
+## 3. Distributed Lock Manager (`src/nodes/lock_manager.py`)
 
 ### Tujuan
 Menyediakan kunci terdistribusi dengan semantik shared (baca) dan exclusive (tulis), dilengkapi deteksi deadlock otomatis.

@@ -207,6 +207,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
+  /geo/latency:
+    get:
+      tags: [System]
+      summary: Info Geo-Latency
+      description: Mendapatkan info asal region node dan matriks simulasi latensi.
+      responses:
+        "200":
+          description: Region info dan latency matrix
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node_id:
+                    type: string
+                  node_region:
+                    type: string
+                  latency_matrix:
+                    type: object
+
   /peers:
     get:
       tags: [System]
