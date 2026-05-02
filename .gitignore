@@ -1,0 +1,43 @@
+# Assignment instructions (local only)
+PROMPT.md
+PROMPT.MD
+BRIEF TUGAS.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker/data/
+
+# Benchmark outputs
+benchmarks/results/
+benchmarks/graphs/
+
+# Reports
+*.pdf
