@@ -2,6 +2,10 @@
 PROMPT.md
 PROMPT.MD
 BRIEF TUGAS.md
+IMPROVEMENT_PLAN.md
+
+# Demo scripts (local only)
+scripts/
 
 # Python
 __pycache__/
