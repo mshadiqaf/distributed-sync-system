@@ -15,6 +15,7 @@ from src.communication.message_passing import NodeClient
 from src.communication.failure_detector import FailureDetector
 from src.consensus.raft import RaftNode
 from src.nodes.lock_manager import DistributedLockManager
+from src.nodes.queue_node import DistributedQueue
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +24,13 @@ node_client: NodeClient = None
 failure_detector: FailureDetector = None
 raft_node: RaftNode = None
 lock_manager: DistributedLockManager = None
+queue_system: DistributedQueue = None
 
 
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application for a distributed node."""
 
-    global node_client, failure_detector, raft_node, lock_manager
+    global node_client, failure_detector, raft_node, lock_manager, queue_system
 
     settings = get_settings()
     metrics = init_metrics(settings.node_id)
@@ -61,6 +63,19 @@ def create_app() -> FastAPI:
         metrics=metrics,
     )
 
+    # Initialize Queue System
+    node_url = f"http://localhost:{settings.node_port}"
+    queue_system = DistributedQueue(
+        node_id=settings.node_id,
+        node_url=node_url,
+        peers=peers,
+        node_client=node_client,
+        redis_url=settings.redis_url,
+        virtual_nodes=settings.queue_virtual_nodes,
+        ack_timeout=settings.queue_ack_timeout,
+        metrics=metrics,
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Application startup and shutdown events."""
@@ -71,10 +86,12 @@ def create_app() -> FastAPI:
         await failure_detector.start()
         await raft_node.start()
         await lock_manager.start()
+        await queue_system.start()
 
         yield
 
         # Cleanup
+        await queue_system.stop()
         await lock_manager.stop()
         await raft_node.stop()
         await failure_detector.stop()
@@ -195,5 +212,46 @@ def create_app() -> FastAPI:
     async def get_deadlock_info():
         """Get current wait-for graph for deadlock analysis."""
         return lock_manager.get_deadlock_info()
+
+    # --- Queue System Endpoints ---
+
+    @app.post("/queue/push", tags=["Queue System"])
+    async def push_message(request: Request):
+        """Push a message to a distributed queue topic."""
+        data = await request.json()
+        return await queue_system.push_message(
+            topic=data.get("topic", "default"),
+            data=data.get("data"),
+            producer_id=data.get("producer_id", "anonymous"),
+            priority=data.get("priority", 0),
+        )
+
+    @app.post("/queue/consume", tags=["Queue System"])
+    async def consume_message(request: Request):
+        """Consume a message from a queue topic."""
+        data = await request.json()
+        return await queue_system.consume_message(
+            topic=data.get("topic", "default"),
+            consumer_id=data.get("consumer_id", "anonymous"),
+        )
+
+    @app.post("/queue/ack", tags=["Queue System"])
+    async def ack_message(request: Request):
+        """Acknowledge a consumed message."""
+        data = await request.json()
+        return await queue_system.ack_message(
+            message_id=data.get("message_id", ""),
+            consumer_id=data.get("consumer_id", "anonymous"),
+        )
+
+    @app.get("/queue/status", tags=["Queue System"])
+    async def get_queue_status():
+        """Get queue system status and topic information."""
+        return queue_system.get_status()
+
+    @app.get("/queue/ring", tags=["Queue System"])
+    async def get_hash_ring():
+        """Get consistent hash ring visualization."""
+        return queue_system.hash_ring.get_ring_info()
 
     return app
