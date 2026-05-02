@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sync-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sync-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  node1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+    container_name: sync-node1
+    ports:
+      - "8001:8001"
+    environment:
+      - NODE_ID=node1
+      - NODE_HOST=0.0.0.0
+      - NODE_PORT=8001
+      - PEER_NODES=http://node2:8002,http://node3:8003
+      - REDIS_URL=redis://redis:6379/0
+      - API_KEY=sync-api-key-2026
+      - ADMIN_KEY=sync-admin-key-2026
+      - NODE_SECRET=sync-node-secret-2026
+      - ELECTION_TIMEOUT_MIN=1500
+      - ELECTION_TIMEOUT_MAX=3000
+      - HEARTBEAT_INTERVAL=500
+    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sync-network
+    restart: unless-stopped
+
+  node2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+    container_name: sync-node2
+    ports:
+      - "8002:8002"
+    environment:
+      - NODE_ID=node2
+      - NODE_HOST=0.0.0.0
+      - NODE_PORT=8002
+      - PEER_NODES=http://node1:8001,http://node3:8003
+      - REDIS_URL=redis://redis:6379/0
+      - API_KEY=sync-api-key-2026
+      - ADMIN_KEY=sync-admin-key-2026
+      - NODE_SECRET=sync-node-secret-2026
+      - ELECTION_TIMEOUT_MIN=1500
+      - ELECTION_TIMEOUT_MAX=3000
+      - HEARTBEAT_INTERVAL=500
+    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sync-network
+    restart: unless-stopped
+
+  node3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+    container_name: sync-node3
+    ports:
+      - "8003:8003"
+    environment:
+      - NODE_ID=node3
+      - NODE_HOST=0.0.0.0
+      - NODE_PORT=8003
+      - PEER_NODES=http://node1:8001,http://node2:8002
+      - REDIS_URL=redis://redis:6379/0
+      - API_KEY=sync-api-key-2026
+      - ADMIN_KEY=sync-admin-key-2026
+      - NODE_SECRET=sync-node-secret-2026
+      - ELECTION_TIMEOUT_MIN=1500
+      - ELECTION_TIMEOUT_MAX=3000
+      - HEARTBEAT_INTERVAL=500
+    command: ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sync-network
+    restart: unless-stopped
+
+networks:
+  sync-network:
+    driver: bridge
+
+volumes:
+  redis_data:
