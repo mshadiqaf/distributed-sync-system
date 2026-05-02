@@ -1,6 +1,6 @@
 """
 Base FastAPI node for the distributed synchronization system.
-Provides health check, peer discovery, and metrics endpoints.
+Provides health check, peer discovery, metrics, and cluster status endpoints.
 """
 
 from fastapi import FastAPI, Request
@@ -11,22 +11,48 @@ import logging
 
 from src.utils.config import get_settings
 from src.utils.metrics import init_metrics, get_metrics
+from src.communication.message_passing import NodeClient
+from src.communication.failure_detector import FailureDetector
 
 logger = logging.getLogger(__name__)
+
+# Global references for shared components
+node_client: NodeClient = None
+failure_detector: FailureDetector = None
 
 
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application for a distributed node."""
 
+    global node_client, failure_detector
+
     settings = get_settings()
     metrics = init_metrics(settings.node_id)
+    peers = settings.get_peer_list()
+
+    # Initialize communication components
+    node_client = NodeClient(settings.node_id, peers, settings.node_secret)
+    failure_detector = FailureDetector(
+        node_id=settings.node_id,
+        peers=peers,
+        check_interval=2.0,
+        failure_threshold=3,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Application startup and shutdown events."""
         logger.info(f"Node {settings.node_id} starting on port {settings.node_port}")
-        logger.info(f"Peers: {settings.get_peer_list()}")
+        logger.info(f"Peers: {peers}")
+
+        # Start failure detector
+        await failure_detector.start()
+
         yield
+
+        # Cleanup
+        await failure_detector.stop()
+        await node_client.close()
         logger.info(f"Node {settings.node_id} shutting down")
 
     app = FastAPI(
@@ -80,5 +106,15 @@ def create_app() -> FastAPI:
     async def get_node_metrics():
         """Get comprehensive node metrics."""
         return metrics.get_all_metrics()
+
+    @app.get("/cluster/status", tags=["System"])
+    async def get_cluster_status():
+        """Get health status of all nodes in the cluster."""
+        return {
+            "node_id": settings.node_id,
+            "cluster": failure_detector.get_cluster_status(),
+            "alive_peers": failure_detector.get_alive_peers(),
+            "total_peers": len(peers),
+        }
 
     return app
