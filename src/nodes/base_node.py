@@ -11,6 +11,7 @@ import logging
 
 from src.utils.config import get_settings
 from src.utils.metrics import init_metrics, get_metrics
+from src.utils.security import SecurityManager, SecurityMiddleware
 from src.communication.message_passing import NodeClient
 from src.communication.failure_detector import FailureDetector
 from src.consensus.raft import RaftNode
@@ -128,6 +129,14 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Security middleware (after CORS so preflight works)
+    security_manager = SecurityManager(
+        api_key=settings.api_key,
+        admin_key=settings.admin_key,
+        node_secret=settings.node_secret,
+    )
+    app.add_middleware(SecurityMiddleware, security_manager=security_manager)
 
     # Request timing middleware
     @app.middleware("http")
@@ -316,5 +325,15 @@ def create_app() -> FastAPI:
             key=data.get("key", ""),
             requester=data.get("requester", ""),
         )
+
+    # --- Security & Audit Endpoints ---
+
+    @app.get("/audit/logs", tags=["Security"])
+    async def get_audit_logs():
+        """Get recent audit log entries (admin only)."""
+        return {
+            "entries": security_manager.get_audit_log(limit=100),
+            "total": len(security_manager.audit_log),
+        }
 
     return app
