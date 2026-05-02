@@ -3,9 +3,11 @@ PROMPT.md
 PROMPT.MD
 BRIEF TUGAS.md
 IMPROVEMENT_PLAN.md
+CLAUDE.md
+.claude/
 
 # Demo scripts (local only)
-scripts/
+# scripts/
 
 # Python
 __pycache__/
