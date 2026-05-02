@@ -1,12 +1,23 @@
-# 🔄 Distributed Synchronization System
+# Distributed Synchronization System
 
-A distributed synchronization system implementing core distributed systems concepts including **Raft consensus**, **distributed locking**, **consistent-hashing message queuing**, and **MESI cache coherence**.
-
-Built as a university project for Distributed Systems (Sistem Terdistribusi) — Tugas 3.
+Sistem sinkronisasi terdistribusi yang mengimplementasikan empat konsep inti sistem terdistribusi: **Raft Consensus**, **Distributed Locking**, **Distributed Queue dengan Consistent Hashing**, dan **MESI Cache Coherence**.
 
 ---
 
-## 🏗️ Architecture Overview
+## Identitas Mahasiswa
+
+| Field | Keterangan |
+|---|---|
+| **Nama** | Muhammad Shadiq Al-Fatiy |
+| **NIM** | 11231065 |
+| **Kelas** | Sistem Paralel dan Terdistribusi A (SisTer A) |
+| **Program Studi** | Informatika |
+| **Jurusan** | Teknik Elektro, Informatika, dan Bisnis (JTEIB) |
+| **Fakultas** | Sains dan Teknologi Informasi (FSTI) |
+
+---
+
+## Arsitektur Sistem
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -16,279 +27,396 @@ Built as a university project for Distributed Systems (Sistem Terdistribusi) —
 │  │  Node 1  │◄──►│  Node 2  │◄──►│  Node 3  │         │
 │  │ :8001    │    │ :8002    │    │ :8003    │         │
 │  │          │    │          │    │          │         │
-│  │ ┌──────┐ │    │ ┌──────┐ │    │ ┌──────┐ │         │
-│  │ │ Raft │ │    │ │ Raft │ │    │ │ Raft │ │         │
-│  │ │Leader│ │    │ │Follow│ │    │ │Follow│ │         │
-│  │ ├──────┤ │    │ ├──────┤ │    │ ├──────┤ │         │
-│  │ │ Lock │ │    │ │ Lock │ │    │ │ Lock │ │         │
-│  │ │ Mgr  │ │    │ │ Mgr  │ │    │ │ Mgr  │ │         │
-│  │ ├──────┤ │    │ ├──────┤ │    │ ├──────┤ │         │
-│  │ │Queue │ │    │ │Queue │ │    │ │Queue │ │         │
-│  │ ├──────┤ │    │ ├──────┤ │    │ ├──────┤ │         │
-│  │ │MESI  │ │    │ │MESI  │ │    │ │MESI  │ │         │
-│  │ │Cache │ │    │ │Cache │ │    │ │Cache │ │         │
-│  │ └──────┘ │    │ └──────┘ │    │ └──────┘ │         │
+│  │ [Raft  ] │    │ [Raft  ] │    │ [Raft  ] │         │
+│  │ [Lock  ] │    │ [Lock  ] │    │ [Lock  ] │         │
+│  │ [Queue ] │    │ [Queue ] │    │ [Queue ] │         │
+│  │ [Cache ] │    │ [Cache ] │    │ [Cache ] │         │
 │  └──────────┘    └──────────┘    └──────────┘         │
 │        │               │               │               │
 │        └───────────────┼───────────────┘               │
 │                        │                               │
 │                 ┌──────┴──────┐                        │
-│                 │    Redis    │                        │
+│                 │    Redis    │  Penyimpanan Persisten │
 │                 │   :6379     │                        │
 │                 └─────────────┘                        │
 └────────────────────────────────────────────────────────┘
 ```
 
-Each node runs the **same Docker image** with different configuration, forming a 3-node cluster orchestrated by Docker Compose.
+Setiap node menjalankan image Docker yang sama dengan konfigurasi berbeda, membentuk kluster 3-node yang dikelola oleh Docker Compose. Semua subsistem (Raft, Lock, Queue, Cache) berjalan di setiap node. Redis digunakan sebagai backing store persisten.
 
 ---
 
-## 🚀 Features
+## Fitur Utama
 
-### 1. Distributed Lock Manager (Raft Consensus)
-- **Leader election** with randomized timeouts
-- **Shared (read)** and **Exclusive (write)** locks
-- **Deadlock detection** via wait-for graph cycle analysis (DFS)
-- **TTL-based auto-release** for stale locks
-- Lock operations replicated through Raft log
+### 1. Raft Consensus (Pemilihan Pemimpin)
+- Pemilihan leader dengan election timeout acak (1500–3000 ms)
+- Replikasi log operasi kunci melalui AppendEntries RPC
+- Heartbeat setiap 500 ms untuk mencegah re-election
+- Failover otomatis jika leader gagal
 
-### 2. Distributed Queue (Consistent Hashing)
-- **Consistent hash ring** with virtual nodes (150 vnodes per node)
-- **Topic-based routing** — messages routed to the node responsible for a topic
-- **At-least-once delivery** with ack-based tracking
-- **Automatic redelivery** for unacked messages after timeout
-- Redis-backed persistence for message durability
+### 2. Distributed Lock Manager
+- Kunci **Shared (read)** — beberapa client boleh memegang sekaligus
+- Kunci **Exclusive (write)** — hanya satu client pada satu waktu
+- **Deteksi deadlock** via DFS pada wait-for graph
+- **TTL otomatis** untuk mencegah stale lock jika client crash
+- Semua operasi kunci direplikasi melalui Raft
 
-### 3. Cache Coherence (MESI Protocol)
-- Full **4-state MESI** state machine (Modified, Exclusive, Shared, Invalid)
-- **Snoop-based bus protocol** via HTTP for inter-node communication
-- **Write-back policy** — Modified entries flushed to Redis on eviction
-- **LRU replacement** with configurable cache size
-- State transition logging for debugging and visualization
+### 3. Distributed Queue (Consistent Hashing)
+- Hash ring dengan 150 virtual node per node fisik
+- Routing pesan berdasarkan hash topik → node pemilik
+- Jaminan pengiriman **at-least-once** dengan ack tracking
+- Re-delivery otomatis untuk pesan yang tidak di-ack setelah timeout
+- Persistensi pesan di Redis
 
-### 4. Security (Bonus)
-- **API key authentication** with role-based access control (RBAC)
-- **3-tier roles**: Admin, Writer, Reader
-- **Inter-node authentication** via shared secret
-- **Audit logging** with request tracking
+### 4. MESI Cache Coherence
+- 4 state penuh: **Modified, Exclusive, Shared, Invalid**
+- Protokol snoop via HTTP antar-node (BusRd, BusRdX)
+- Write-back policy: entry Modified di-flush ke Redis saat eviksi
+- LRU replacement dengan kapasitas yang dapat dikonfigurasi
 
----
-
-## 📦 Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Language | Python 3.12+ |
-| Framework | FastAPI (async) |
-| State Store | Redis 7 |
-| HTTP Client | httpx (async) |
-| Container | Docker & Docker Compose |
-| Visualization | matplotlib |
-| Testing | pytest + pytest-asyncio |
+### 5. Keamanan (Bonus)
+- Autentikasi API key dengan RBAC (Admin, Writer, Reader)
+- Autentikasi antar-node via shared secret
+- Audit logging setiap request
 
 ---
 
-## 🛠️ Quick Start
+## Cara Menjalankan
 
-### Prerequisites
-- Docker & Docker Compose
-- Python 3.12+ (for local development)
-- Git
-
-### Option 1: Docker (Recommended)
+### Cara 1: Docker Compose (Direkomendasikan)
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/mshadiqaf/distributed-sync-system.git
 cd distributed-sync-system
 
-# Start the 3-node cluster
+# Jalankan kluster 3-node + Redis
 docker-compose -f docker/docker-compose.yml up --build -d
 
-# Verify all nodes are running
+# Verifikasi semua node berjalan
 curl http://localhost:8001/health
 curl http://localhost:8002/health
 curl http://localhost:8003/health
+
+# Hentikan kluster
+docker-compose -f docker/docker-compose.yml down
 ```
 
-### Option 2: Local Development
+### Cara 2: Lokal (Tanpa Docker)
 
 ```bash
-# Install dependencies
+# Install dependensi
 pip install -r requirements.txt
 
-# Start Redis
+# Jalankan Redis
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 
-# Start nodes (in separate terminals)
-NODE_ID=node1 NODE_PORT=8001 PEER_NODES=http://localhost:8002,http://localhost:8003 python -m uvicorn src.main:app --host 0.0.0.0 --port 8001
-NODE_ID=node2 NODE_PORT=8002 PEER_NODES=http://localhost:8001,http://localhost:8003 python -m uvicorn src.main:app --host 0.0.0.0 --port 8002
-NODE_ID=node3 NODE_PORT=8003 PEER_NODES=http://localhost:8001,http://localhost:8002 python -m uvicorn src.main:app --host 0.0.0.0 --port 8003
+# Terminal 1 — Node 1
+NODE_ID=node1 NODE_PORT=8001 PEER_NODES=http://localhost:8002,http://localhost:8003 \
+API_KEY=dev-api-key-123 ADMIN_KEY=dev-admin-key-456 NODE_SECRET=dev-node-secret-789 \
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8001
+
+# Terminal 2 — Node 2
+NODE_ID=node2 NODE_PORT=8002 PEER_NODES=http://localhost:8001,http://localhost:8003 \
+API_KEY=dev-api-key-123 ADMIN_KEY=dev-admin-key-456 NODE_SECRET=dev-node-secret-789 \
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8002
+
+# Terminal 3 — Node 3
+NODE_ID=node3 NODE_PORT=8003 PEER_NODES=http://localhost:8001,http://localhost:8002 \
+API_KEY=dev-api-key-123 ADMIN_KEY=dev-admin-key-456 NODE_SECRET=dev-node-secret-789 \
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8003
 ```
 
 ---
 
-## 📡 API Endpoints
+## Contoh Penggunaan API
 
-Access the interactive API documentation at: `http://localhost:8001/docs`
+> Swagger UI: `http://localhost:8001/docs` (tanpa autentikasi)
+
+### Health Check
+
+```bash
+curl http://localhost:8001/health
+```
+```json
+{"node_id": "node1", "status": "healthy", "role": "leader", "leader_id": "node1"}
+```
+
+### Raft State
+
+```bash
+curl -H "X-API-Key: dev-api-key-123" http://localhost:8001/raft/state
+```
+```json
+{"node_id": "node1", "role": "leader", "current_term": 2, "leader_id": "node1"}
+```
+
+### Distributed Lock
+
+```bash
+# Akuisisi kunci exclusive
+curl -X POST http://localhost:8001/lock/acquire \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"resource": "file.db", "client_id": "app1", "lock_type": "exclusive", "ttl": 30}'
+```
+```json
+{"status": "granted", "resource": "file.db", "client_id": "app1", "lock_type": "exclusive"}
+```
+
+```bash
+# Akuisisi kunci shared (dua client bersamaan)
+curl -X POST http://localhost:8001/lock/acquire \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"resource": "config.json", "client_id": "reader1", "lock_type": "shared"}'
+
+# Lihat semua kunci aktif
+curl -H "X-API-Key: dev-api-key-123" http://localhost:8001/lock/status
+
+# Lepaskan kunci
+curl -X POST http://localhost:8001/lock/release \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"resource": "file.db", "client_id": "app1"}'
+```
+
+### Distributed Queue
+
+```bash
+# Kirim pesan ke topik "orders"
+curl -X POST http://localhost:8001/queue/push \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"topic": "orders", "data": {"order_id": 101, "item": "laptop"}, "producer_id": "shop"}'
+```
+```json
+{"status": "queued", "message_id": "a1b2c3d4", "topic": "orders", "node": "node2"}
+```
+
+```bash
+# Consume pesan
+curl -X POST http://localhost:8001/queue/consume \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"topic": "orders", "consumer_id": "worker1"}'
+
+# Ack pesan
+curl -X POST http://localhost:8001/queue/ack \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"message_id": "a1b2c3d4", "consumer_id": "worker1"}'
+```
+
+### MESI Cache
+
+```bash
+# Tulis ke Node 1 → state M (Modified)
+curl -X PUT http://localhost:8001/cache/user:42 \
+  -H "X-API-Key: dev-api-key-123" -H "Content-Type: application/json" \
+  -d '{"value": "John Doe"}'
+```
+```json
+{"status": "written", "key": "user:42", "state": "M", "node": "node1"}
+```
+
+```bash
+# Baca dari Node 2 → BusRd, state jadi S (Shared)
+curl -H "X-API-Key: dev-api-key-123" http://localhost:8002/cache/user:42
+```
+```json
+{"status": "miss_peer", "key": "user:42", "value": "John Doe", "state": "S", "node": "node2"}
+```
+
+```bash
+# Lihat statistik cache
+curl -H "X-API-Key: dev-api-key-123" http://localhost:8001/cache-stats
+```
+
+---
+
+## Daftar Endpoint API
 
 ### System
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Node health check |
-| GET | `/peers` | List peer nodes |
-| GET | `/metrics` | Performance metrics |
-| GET | `/cluster/status` | Cluster-wide health |
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/health` | Status kesehatan node |
+| GET | `/peers` | Daftar peer yang dikenal |
+| GET | `/metrics` | Metrik performa |
+| GET | `/cluster/status` | Status seluruh kluster |
 
 ### Raft Consensus
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/raft/state` | Current Raft state (role, term, leader) |
-| POST | `/raft/request-vote` | RequestVote RPC (internal) |
-| POST | `/raft/append-entries` | AppendEntries RPC (internal) |
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/raft/state` | Status Raft (role, term, leader) |
+| POST | `/raft/request-vote` | RPC pemilihan (internal) |
+| POST | `/raft/append-entries` | RPC heartbeat + replikasi (internal) |
 
 ### Lock Manager
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/lock/acquire` | Acquire a distributed lock |
-| POST | `/lock/release` | Release a lock |
-| GET | `/lock/status` | All active locks |
-| GET | `/lock/deadlocks` | Wait-for graph analysis |
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| POST | `/lock/acquire` | Akuisisi kunci terdistribusi |
+| POST | `/lock/release` | Lepaskan kunci |
+| GET | `/lock/status` | Semua kunci aktif |
+| GET | `/lock/deadlocks` | Analisis wait-for graph |
 
 ### Queue System
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/queue/push` | Push message to topic |
-| POST | `/queue/consume` | Consume from topic |
-| POST | `/queue/ack` | Acknowledge message |
-| GET | `/queue/status` | Queue depths and topics |
-| GET | `/queue/ring` | Hash ring visualization |
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| POST | `/queue/push` | Kirim pesan ke topik |
+| POST | `/queue/consume` | Ambil pesan dari topik |
+| POST | `/queue/ack` | Konfirmasi pesan diproses |
+| GET | `/queue/status` | Kedalaman antrean dan topik |
+| GET | `/queue/ring` | Visualisasi hash ring |
 
 ### Cache (MESI)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/cache/{key}` | Read with MESI protocol |
-| PUT | `/cache/{key}` | Write with MESI protocol |
-| DELETE | `/cache/{key}` | Invalidate cache entry |
-| GET | `/cache-stats` | MESI state distribution |
-| GET | `/cache-entries` | All cache entries |
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/cache/{key}` | Baca dengan protokol MESI |
+| PUT | `/cache/{key}` | Tulis dengan protokol MESI |
+| DELETE | `/cache/{key}` | Invalidasi entry cache |
+| GET | `/cache-stats` | Distribusi state MESI |
+| GET | `/cache-entries` | Semua entry dengan state |
 
 ### Security
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/audit/logs` | Audit log entries |
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/audit/logs` | Riwayat akses (admin only) |
 
 ---
 
-## 🧪 Testing
+## Hasil Pengujian
 
-### Unit & Integration Tests
+### Unit Test (Tanpa Kluster)
+
+```
+$ python -m pytest tests/unit/ -v
+
+tests/unit/test_cache.py          21 passed
+tests/unit/test_lock_manager.py   17 passed
+tests/unit/test_metrics.py         5 passed
+tests/unit/test_queue.py          20 passed
+
+======================== 63 passed in 1.60s ========================
+```
+
+### Menjalankan Test
+
 ```bash
-# Install test dependencies
-pip install pytest pytest-asyncio
+# Unit test saja (tidak butuh kluster)
+python -m pytest tests/unit/ -v
 
-# Run tests
+# Semua test (butuh kluster berjalan untuk integration test)
 python -m pytest tests/ -v
+
+# Test komponen tertentu
+python -m pytest tests/unit/test_lock_manager.py -v
+python -m pytest tests/unit/test_cache.py -v
 ```
 
-### Benchmarks
+### Benchmark
+
 ```bash
-# Start the cluster first, then:
-python benchmarks/benchmark_runner.py
-
-# Generate visualization charts
-python benchmarks/visualize.py
+# Jalankan kluster dulu, kemudian:
+python benchmarks/benchmark_runner.py   # hasil di benchmarks/results/
+python benchmarks/visualize.py          # grafik di benchmarks/graphs/
 ```
-
-Benchmark results are saved to `benchmarks/results/` and charts to `benchmarks/graphs/`.
 
 ---
 
-## 📁 Project Structure
+## Struktur Proyek
 
 ```
 distributed-sync-system/
 ├── src/
-│   ├── main.py                     # Application entry point
+│   ├── main.py                     # Entry point (uvicorn runner)
 │   ├── nodes/
-│   │   ├── base_node.py            # FastAPI app factory + all endpoints
+│   │   ├── base_node.py            # FastAPI factory + semua endpoint
 │   │   ├── lock_manager.py         # Distributed Lock Manager
-│   │   ├── queue_node.py           # Distributed Queue + Consistent Hashing
+│   │   ├── queue_node.py           # Queue + Consistent Hash Ring
 │   │   └── cache_node.py           # MESI Cache Coherence
 │   ├── consensus/
-│   │   └── raft.py                 # Simplified Raft implementation
+│   │   └── raft.py                 # Implementasi Raft (511 baris)
 │   ├── communication/
-│   │   ├── message_passing.py      # Async HTTP inter-node client
-│   │   └── failure_detector.py     # Heartbeat-based failure detection
+│   │   ├── message_passing.py      # HTTP client antar-node (retry, backoff)
+│   │   └── failure_detector.py     # Deteksi kegagalan node (heartbeat)
 │   └── utils/
-│       ├── config.py               # Pydantic-based configuration
-│       ├── metrics.py              # In-memory metrics collector
+│       ├── config.py               # Pydantic settings (env vars)
+│       ├── metrics.py              # Collector metrik in-memory
 │       └── security.py             # RBAC + API key + audit logging
+├── docs/
+│   ├── architecture.md             # Penjelasan arsitektur lengkap
+│   ├── api_spec.md                 # Spesifikasi API dengan contoh JSON
+│   └── deployment_guide.md         # Panduan deploy + troubleshooting
 ├── docker/
-│   ├── Dockerfile.node             # Single node Docker image
-│   └── docker-compose.yml          # 3-node cluster orchestration
+│   ├── Dockerfile.node             # Image Docker satu node
+│   └── docker-compose.yml          # Orkestrasi 3-node + Redis
 ├── benchmarks/
-│   ├── benchmark_runner.py         # Performance benchmark suite
-│   └── visualize.py                # Matplotlib chart generator
+│   ├── benchmark_runner.py         # Suite benchmark performa
+│   └── visualize.py                # Generator grafik matplotlib
 ├── tests/
-│   └── test_integration.py         # Integration tests
-├── requirements.txt                # Pinned Python dependencies
-├── .env.example                    # Environment variable template
-└── README.md                       # This file
+│   ├── unit/                       # Unit test (tidak butuh kluster)
+│   │   ├── test_lock_manager.py
+│   │   ├── test_queue.py
+│   │   ├── test_cache.py
+│   │   └── test_metrics.py
+│   └── integration/
+│       └── test_cluster.py         # Integration test (butuh kluster)
+├── pytest.ini                      # Konfigurasi pytest
+├── requirements.txt                # Dependensi Python
+├── .env.example                    # Template environment variables
+└── README.md
 ```
 
 ---
 
-## ⚙️ Configuration
+## Konfigurasi Environment Variables
 
-All configuration is done via environment variables (see `.env.example`):
+Lihat `.env.example` untuk daftar lengkap. Variabel utama:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ID` | `node1` | Unique node identifier |
-| `NODE_PORT` | `8001` | HTTP server port |
-| `PEER_NODES` | _(empty)_ | Comma-separated peer URLs |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
-| `ELECTION_TIMEOUT_MIN` | `1500` | Min election timeout (ms) |
-| `ELECTION_TIMEOUT_MAX` | `3000` | Max election timeout (ms) |
-| `HEARTBEAT_INTERVAL` | `500` | Leader heartbeat interval (ms) |
-| `CACHE_MAX_SIZE` | `1000` | Max cache entries per node |
-| `API_KEY` | _(empty)_ | API key for writer role |
-| `ADMIN_KEY` | _(empty)_ | API key for admin role |
-
----
-
-## 📊 MESI State Transitions
-
-```
-       ┌─────────────────────────────────────────┐
-       │              BusRd (Snoop)               │
-       │         ┌───────────────────┐            │
-       ▼         │                   ▼            │
-   ┌───────┐  Read Hit         ┌───────┐         │
-   │   I   │──────────────────►│   E   │         │
-   │Invalid│  (from store,     │Exclus.│         │
-   └───────┘   no other copy)  └───────┘         │
-       ▲                            │             │
-       │ BusRdX                     │ BusRd       │
-       │ (Snoop)            Write   │ (Snoop)     │
-       │                     │      ▼             │
-   ┌───────┐                 │  ┌───────┐         │
-   │   S   │◄────────────────┘  │   M   │         │
-   │Shared │   BusRd (Snoop)    │Modif. │─────────┘
-   └───────┘                    └───────┘
-       │                            ▲
-       │         Write              │
-       └────────────────────────────┘
-```
+| Variabel | Default | Deskripsi |
+|---|---|---|
+| `NODE_ID` | — | ID unik node |
+| `NODE_PORT` | `8001` | Port HTTP |
+| `PEER_NODES` | — | URL peer (koma-dipisah) |
+| `REDIS_URL` | `redis://localhost:6379/0` | Koneksi Redis |
+| `API_KEY` | `dev-api-key-123` | API key (role writer) |
+| `ADMIN_KEY` | `dev-admin-key-456` | API key (role admin) |
+| `NODE_SECRET` | `dev-node-secret-789` | Secret antar-node |
+| `ELECTION_TIMEOUT_MIN` | `1500` | Min timeout Raft (ms) |
+| `ELECTION_TIMEOUT_MAX` | `3000` | Max timeout Raft (ms) |
+| `HEARTBEAT_INTERVAL` | `500` | Interval heartbeat (ms) |
+| `CACHE_MAX_SIZE` | `1000` | Kapasitas cache per node |
 
 ---
 
-## 👤 Author
+## Troubleshooting
 
-**Muhammad Shadiq Al Furqan**
-Sistem Terdistribusi — 2026
+**Node tidak merespons:**
+```bash
+docker-compose -f docker/docker-compose.yml logs node1
+```
 
-## 📄 License
+**Tidak ada leader Raft:** Tunggu 3–5 detik setelah startup. Cek dengan `curl http://localhost:8001/raft/state`.
 
-MIT
+**Lock selalu return "not_leader":** Kirim request ke node yang menjadi leader. Temukan leader dari `/raft/state`.
+
+**Redis connection error:** Pastikan container Redis berjalan: `docker ps | grep redis`
+
+Panduan lengkap: [docs/deployment_guide.md](docs/deployment_guide.md)
+
+---
+
+## Tech Stack
+
+| Komponen | Teknologi |
+|---|---|
+| Bahasa | Python 3.12+ |
+| Framework | FastAPI (async) |
+| State Store | Redis 7 |
+| HTTP Client | httpx (async) |
+| Container | Docker & Docker Compose |
+| Testing | pytest + pytest-asyncio |
+| Visualisasi | matplotlib |
+
+---
+
+## Dokumentasi Teknis
+
+- [docs/architecture.md](docs/architecture.md) — Arsitektur sistem, diagram, penjelasan protokol
+- [docs/api_spec.md](docs/api_spec.md) — Spesifikasi API lengkap dengan contoh request/response
+- [docs/deployment_guide.md](docs/deployment_guide.md) — Panduan deployment dan troubleshooting
