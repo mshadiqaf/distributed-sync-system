@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     node_id: str = Field(default="node1", description="Unique identifier for this node")
     node_host: str = Field(default="0.0.0.0", description="Host to bind the server to")
     node_port: int = Field(default=8001, description="Port to bind the server to")
+    node_region: str = Field(default="ap-jakarta", description="Simulated geographical region of this node")
 
     # Peer Nodes
     peer_nodes: str = Field(

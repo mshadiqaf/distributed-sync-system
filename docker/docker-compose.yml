@@ -27,6 +27,7 @@ services:
       - NODE_ID=node1
       - NODE_HOST=0.0.0.0
       - NODE_PORT=8001
+      - NODE_REGION=ap-jakarta
       - PEER_NODES=http://node2:8002,http://node3:8003
       - REDIS_URL=redis://redis:6379/0
       - API_KEY=sync-api-key-2026
@@ -54,6 +55,7 @@ services:
       - NODE_ID=node2
       - NODE_HOST=0.0.0.0
       - NODE_PORT=8002
+      - NODE_REGION=ap-singapore
       - PEER_NODES=http://node1:8001,http://node3:8003
       - REDIS_URL=redis://redis:6379/0
       - API_KEY=sync-api-key-2026
@@ -81,6 +83,7 @@ services:
       - NODE_ID=node3
       - NODE_HOST=0.0.0.0
       - NODE_PORT=8003
+      - NODE_REGION=ap-tokyo
       - PEER_NODES=http://node1:8001,http://node2:8002
       - REDIS_URL=redis://redis:6379/0
       - API_KEY=sync-api-key-2026
