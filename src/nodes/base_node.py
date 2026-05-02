@@ -14,6 +14,7 @@ from src.utils.metrics import init_metrics, get_metrics
 from src.communication.message_passing import NodeClient
 from src.communication.failure_detector import FailureDetector
 from src.consensus.raft import RaftNode
+from src.nodes.lock_manager import DistributedLockManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +22,13 @@ logger = logging.getLogger(__name__)
 node_client: NodeClient = None
 failure_detector: FailureDetector = None
 raft_node: RaftNode = None
+lock_manager: DistributedLockManager = None
 
 
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application for a distributed node."""
 
-    global node_client, failure_detector, raft_node
+    global node_client, failure_detector, raft_node, lock_manager
 
     settings = get_settings()
     metrics = init_metrics(settings.node_id)
@@ -52,6 +54,13 @@ def create_app() -> FastAPI:
         heartbeat_interval=settings.heartbeat_interval,
     )
 
+    # Initialize Lock Manager
+    lock_manager = DistributedLockManager(
+        node_id=settings.node_id,
+        raft_node=raft_node,
+        metrics=metrics,
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Application startup and shutdown events."""
@@ -61,10 +70,12 @@ def create_app() -> FastAPI:
         # Start failure detector and Raft
         await failure_detector.start()
         await raft_node.start()
+        await lock_manager.start()
 
         yield
 
         # Cleanup
+        await lock_manager.stop()
         await raft_node.stop()
         await failure_detector.stop()
         await node_client.close()
@@ -151,5 +162,38 @@ def create_app() -> FastAPI:
     async def get_raft_state():
         """Get current Raft consensus state."""
         return raft_node.get_state()
+
+    # --- Lock Manager Endpoints ---
+
+    @app.post("/lock/acquire", tags=["Lock Manager"])
+    async def acquire_lock(request: Request):
+        """Acquire a distributed lock on a resource."""
+        data = await request.json()
+        return await lock_manager.acquire_lock(
+            resource=data.get("resource", ""),
+            client_id=data.get("client_id", ""),
+            lock_type=data.get("lock_type", "exclusive"),
+            ttl=data.get("ttl", 30.0),
+            timeout=data.get("timeout", 10.0),
+        )
+
+    @app.post("/lock/release", tags=["Lock Manager"])
+    async def release_lock(request: Request):
+        """Release a distributed lock."""
+        data = await request.json()
+        return await lock_manager.release_lock(
+            resource=data.get("resource", ""),
+            client_id=data.get("client_id", ""),
+        )
+
+    @app.get("/lock/status", tags=["Lock Manager"])
+    async def get_lock_status():
+        """Get all active locks and waiting requests."""
+        return lock_manager.get_status()
+
+    @app.get("/lock/deadlocks", tags=["Lock Manager"])
+    async def get_deadlock_info():
+        """Get current wait-for graph for deadlock analysis."""
+        return lock_manager.get_deadlock_info()
 
     return app
