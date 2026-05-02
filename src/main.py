@@ -20,8 +20,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.nodes.base_node import create_app
 from src.utils.config import get_settings
+from src.geo.latency import simulate_latency
+from fastapi import Request
 
 app = create_app()
+
+@app.middleware("http")
+async def geo_latency_middleware(request: Request, call_next):
+    """Simulate network latency based on X-Source-Region header."""
+    source_region = request.headers.get("x-source-region")
+    if source_region:
+        current_region = get_settings().node_region
+        await simulate_latency(source_region, current_region)
+    return await call_next(request)
 
 if __name__ == "__main__":
     settings = get_settings()

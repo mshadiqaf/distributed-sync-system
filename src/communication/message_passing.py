@@ -28,11 +28,14 @@ class NodeClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the async HTTP client."""
         if self._client is None or self._client.is_closed:
+            from src.utils.config import get_settings
+            settings = get_settings()
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(DEFAULT_TIMEOUT),
                 headers={
                     "X-Node-ID": self.node_id,
                     "X-Node-Secret": self.node_secret,
+                    "X-Source-Region": settings.node_region,
                 },
             )
         return self._client
