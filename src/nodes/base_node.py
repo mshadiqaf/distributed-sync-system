@@ -16,6 +16,7 @@ from src.communication.failure_detector import FailureDetector
 from src.consensus.raft import RaftNode
 from src.nodes.lock_manager import DistributedLockManager
 from src.nodes.queue_node import DistributedQueue
+from src.nodes.cache_node import MESICache
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,13 @@ failure_detector: FailureDetector = None
 raft_node: RaftNode = None
 lock_manager: DistributedLockManager = None
 queue_system: DistributedQueue = None
+cache_system: MESICache = None
 
 
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application for a distributed node."""
 
-    global node_client, failure_detector, raft_node, lock_manager, queue_system
+    global node_client, failure_detector, raft_node, lock_manager, queue_system, cache_system
 
     settings = get_settings()
     metrics = init_metrics(settings.node_id)
@@ -76,6 +78,17 @@ def create_app() -> FastAPI:
         metrics=metrics,
     )
 
+    # Initialize MESI Cache
+    cache_system = MESICache(
+        node_id=settings.node_id,
+        node_url=node_url,
+        peers=peers,
+        node_client=node_client,
+        redis_url=settings.redis_url,
+        max_size=settings.cache_max_size,
+        metrics=metrics,
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Application startup and shutdown events."""
@@ -87,10 +100,12 @@ def create_app() -> FastAPI:
         await raft_node.start()
         await lock_manager.start()
         await queue_system.start()
+        await cache_system.start()
 
         yield
 
         # Cleanup
+        await cache_system.stop()
         await queue_system.stop()
         await lock_manager.stop()
         await raft_node.stop()
@@ -253,5 +268,53 @@ def create_app() -> FastAPI:
     async def get_hash_ring():
         """Get consistent hash ring visualization."""
         return queue_system.hash_ring.get_ring_info()
+
+    # --- Cache Coherence Endpoints ---
+
+    @app.get("/cache/{key}", tags=["Cache (MESI)"])
+    async def cache_read(key: str):
+        """Read a value from the distributed cache (MESI protocol)."""
+        return await cache_system.read(key)
+
+    @app.put("/cache/{key}", tags=["Cache (MESI)"])
+    async def cache_write(key: str, request: Request):
+        """Write a value to the distributed cache (MESI protocol)."""
+        data = await request.json()
+        return await cache_system.write(key, data.get("value"))
+
+    @app.delete("/cache/{key}", tags=["Cache (MESI)"])
+    async def cache_delete(key: str):
+        """Invalidate a cache entry."""
+        return await cache_system.invalidate(key)
+
+    @app.get("/cache-stats", tags=["Cache (MESI)"])
+    async def cache_stats():
+        """Get cache statistics and MESI state distribution."""
+        return cache_system.get_stats()
+
+    @app.get("/cache-entries", tags=["Cache (MESI)"])
+    async def cache_entries():
+        """Get all cache entries with MESI states."""
+        return cache_system.get_entries()
+
+    # --- Cache Snoop Protocol (Internal) ---
+
+    @app.post("/cache/snoop/read", tags=["Cache Snoop"])
+    async def snoop_read(request: Request):
+        """Handle snoop read (BusRd) from a peer node."""
+        data = await request.json()
+        return cache_system.handle_snoop_read(
+            key=data.get("key", ""),
+            requester=data.get("requester", ""),
+        )
+
+    @app.post("/cache/snoop/invalidate", tags=["Cache Snoop"])
+    async def snoop_invalidate(request: Request):
+        """Handle snoop invalidate (BusRdX) from a peer node."""
+        data = await request.json()
+        return cache_system.handle_snoop_invalidate(
+            key=data.get("key", ""),
+            requester=data.get("requester", ""),
+        )
 
     return app
