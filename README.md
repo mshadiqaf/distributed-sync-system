@@ -47,30 +47,7 @@
 
 Tiga node identik berjalan di dalam Docker Compose network, masing-masing menjalankan FastAPI server yang memuat seluruh subsistem secara simultan. Redis berperan sebagai shared persistent store.
 
-```
-┌────────────────────────────────────────────────────────┐
-│              Docker Compose Network (sync-network)     │
-│                                                        │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐         │
-│  │  Node 1  │◄──►│  Node 2  │◄──►│  Node 3  │         │
-│  │ :8001    │    │ :8002    │    │ :8003    │         │
-│  │ Jakarta  │    │Singapore │    │  Tokyo   │         │
-│  │          │    │          │    │          │         │
-│  │ [Raft  ] │    │ [Raft  ] │    │ [Raft  ] │         │
-│  │ [Lock  ] │    │ [Lock  ] │    │ [Lock  ] │         │
-│  │ [Queue ] │    │ [Queue ] │    │ [Queue ] │         │
-│  │ [Cache ] │    │ [Cache ] │    │ [Cache ] │         │
-│  └─────┬────┘    └─────┬────┘    └─────┬────┘         │
-│        │               │               │               │
-│        └───────────────┼───────────────┘               │
-│                        │                               │
-│                 ┌──────┴──────┐                        │
-│                 │    Redis    │                        │
-│                 │   :6379     │                        │
-│                 │ (Persisten) │                        │
-│                 └─────────────┘                        │
-└────────────────────────────────────────────────────────┘
-```
+![Arsitektur Distributed Synchronization System](architecture_diagram.png)
 
 ---
 
