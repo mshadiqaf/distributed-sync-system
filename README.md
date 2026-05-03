@@ -16,6 +16,7 @@
 
 ### Identitas
 
+| Identitas | Detail |
 |---|---|
 | **Nama** | Muhammad Shadiq Al-Fatiy |
 | **NIM** | 11231065 |
