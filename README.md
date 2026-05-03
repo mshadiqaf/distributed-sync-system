@@ -22,7 +22,6 @@
 | **Kelas** | Sistem Paralel dan Terdistribusi A (SisTer A) |
 | **Prodi / Jurusan** | Informatika — JTEIB |
 | **Fakultas** | Sains dan Teknologi Informasi (FSTI) |
-|---|---|
 
 ---
 
