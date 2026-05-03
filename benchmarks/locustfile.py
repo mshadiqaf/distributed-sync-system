@@ -9,7 +9,7 @@ class SyncSystemUser(HttpUser):
     def on_start(self):
         """Dijalankan saat setiap virtual user mulai"""
         # Set API Key default untuk semua request
-        self.client.headers.update({"X-API-Key": "dev-api-key-123", "Content-Type": "application/json"})
+        self.client.headers.update({"X-API-Key": "sync-api-key-2026", "Content-Type": "application/json"})
         self.client_id = f"locust-client-{uuid.uuid4().hex[:8]}"
 
     @task(3)
@@ -47,6 +47,7 @@ class SyncSystemUser(HttpUser):
             data = response.json()
             if data.get("status") == "consumed" and "message_id" in data:
                 self.client.post("/queue/ack", json={
+                    "topic": topic,
                     "message_id": data["message_id"],
                     "consumer_id": self.client_id
                 }, name="/queue/ack")

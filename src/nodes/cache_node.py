@@ -103,7 +103,7 @@ class MESICache:
         # Flush all Modified entries to Redis before shutdown
         await self._flush_all_modified()
         if self._redis:
-            await self._redis.aclose()
+            await self._redis.close()
         logger.info(f"[{self.node_id}] MESI Cache stopped")
 
     # --- Read Operation ---

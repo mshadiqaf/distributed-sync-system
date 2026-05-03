@@ -168,7 +168,7 @@ class DistributedQueue:
         if self._redelivery_task:
             self._redelivery_task.cancel()
         if self._redis:
-            await self._redis.aclose()
+            await self._redis.close()
         logger.info(f"[{self.node_id}] Queue System stopped")
 
     # --- Message Operations ---
@@ -200,6 +200,7 @@ class DistributedQueue:
         else:
             # Forward to the owning node
             if self.node_client:
+                logger.info(f"[{self.node_id}] Forwarding PUSH for topic '{topic}' to owner {target_node}")
                 response = await self.node_client.send_to_peer(
                     target_node,
                     "/queue/push",
@@ -260,6 +261,7 @@ class DistributedQueue:
         if target_node != self.node_url:
             # Forward to owning node
             if self.node_client:
+                logger.info(f"[{self.node_id}] Forwarding CONSUME for topic '{topic}' to owner {target_node}")
                 response = await self.node_client.send_to_peer(
                     target_node,
                     "/queue/consume",
@@ -285,6 +287,7 @@ class DistributedQueue:
         # Pop the first message and move to pending acks
         message = queue.pop(0)
         message.delivery_count += 1
+        message.timestamp = time.time()  # Update timestamp to delivery time
         self.pending_acks[message.id] = message
 
         if self.metrics:
@@ -306,9 +309,30 @@ class DistributedQueue:
         self,
         message_id: str,
         consumer_id: str = "anonymous",
+        topic: str = "",
     ) -> Dict[str, Any]:
         """Acknowledge a consumed message (completes delivery)."""
+        # If topic is provided, route to the owning node
+        if topic:
+            target_node = self.hash_ring.get_node(topic)
+            if target_node and target_node != self.node_url:
+                if self.node_client:
+                    logger.info(f"[{self.node_id}] Forwarding ACK for message {message_id} (topic: {topic}) to owner {target_node}")
+                    response = await self.node_client.send_to_peer(
+                        target_node,
+                        "/queue/ack",
+                        {
+                            "message_id": message_id,
+                            "consumer_id": consumer_id,
+                            "topic": topic,
+                        },
+                    )
+                    if response:
+                        return response
+
+        logger.info(f"[{self.node_id}] Processing ACK locally for message {message_id}")
         if message_id not in self.pending_acks:
+            logger.warning(f"[{self.node_id}] ACK FAILED: Message {message_id} not in pending_acks. Current keys: {list(self.pending_acks.keys())}")
             return {
                 "status": "error",
                 "message": f"Message {message_id} not found in pending acks",

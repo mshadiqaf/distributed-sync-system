@@ -137,7 +137,7 @@ class RaftNode:
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
         if self._redis:
-            await self._redis.aclose()
+            await self._redis.close()
         logger.info(f"[{self.node_id}] Raft stopped")
 
     # --- Persistence ---
@@ -218,7 +218,7 @@ class RaftNode:
         }
 
         responses = await self.node_client.broadcast_to_peers(
-            "/raft/request-vote", vote_request
+            "/raft/request-vote", vote_request, timeout=1.0, retries=0
         )
 
         # Count votes (including self-vote)
@@ -296,7 +296,7 @@ class RaftNode:
     async def _send_append_entries(self, peer: str, request: Dict):
         """Send AppendEntries to a single peer and handle response."""
         response = await self.node_client.send_to_peer(
-            peer, "/raft/append-entries", request, retries=0
+            peer, "/raft/append-entries", request, retries=0, timeout=1.0
         )
 
         if response:

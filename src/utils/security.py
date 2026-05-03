@@ -110,11 +110,13 @@ class SecurityManager:
         if path in PUBLIC_PATHS:
             return Role.READER
 
-        # Internal paths use node secret
+        # If node secret is provided and valid, grant ADMIN access to all paths
+        secret = request.headers.get("X-Node-Secret", "")
+        if secret and (secret == self.node_secret or not self.node_secret):
+            return Role.ADMIN
+
+        # Internal paths STRICTLY require node secret
         if any(path.startswith(p) for p in INTERNAL_PATHS):
-            secret = request.headers.get("X-Node-Secret", "")
-            if secret == self.node_secret or not self.node_secret:
-                return Role.ADMIN
             return None
 
         # Standard API key auth
@@ -156,6 +158,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
         path = request.url.path
+
+        # Bypass security for CORS preflight requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
 
         # Authenticate
         role = self.security.authenticate(request)

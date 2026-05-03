@@ -3,11 +3,13 @@ Base FastAPI node for the distributed synchronization system.
 Provides health check, peer discovery, metrics, and cluster status endpoints.
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from contextlib import asynccontextmanager
 import time
 import logging
+import os
 
 from src.utils.config import get_settings
 from src.utils.metrics import init_metrics, get_metrics
@@ -67,7 +69,8 @@ def create_app() -> FastAPI:
     )
 
     # Initialize Queue System
-    node_url = f"http://localhost:{settings.node_port}"
+    node_url = f"http://{settings.node_id}:{settings.node_port}"
+    ack_timeout = float(os.getenv("ACK_TIMEOUT", "30.0"))
     queue_system = DistributedQueue(
         node_id=settings.node_id,
         node_url=node_url,
@@ -75,7 +78,7 @@ def create_app() -> FastAPI:
         node_client=node_client,
         redis_url=settings.redis_url,
         virtual_nodes=settings.queue_virtual_nodes,
-        ack_timeout=settings.queue_ack_timeout,
+        ack_timeout=ack_timeout,
         metrics=metrics,
     )
 
@@ -114,11 +117,19 @@ def create_app() -> FastAPI:
         await node_client.close()
         logger.info(f"Node {settings.node_id} shutting down")
 
+    api_key_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
+
     app = FastAPI(
         title=f"Distributed Sync Node - {settings.node_id}",
         description="Distributed Synchronization System Node",
         version="1.0.0",
+        servers=[
+            {"url": "http://localhost:8001", "description": "Node 1 (ap-jakarta)"},
+            {"url": "http://localhost:8002", "description": "Node 2 (ap-singapore)"},
+            {"url": "http://localhost:8003", "description": "Node 3 (ap-tokyo)"},
+        ],
         lifespan=lifespan,
+        dependencies=[Depends(api_key_scheme)],
     )
 
     # CORS middleware
@@ -198,15 +209,13 @@ def create_app() -> FastAPI:
     # --- Raft Consensus Endpoints ---
 
     @app.post("/raft/request-vote", tags=["Raft"])
-    async def request_vote(request: Request):
+    async def request_vote(data: dict):
         """Handle RequestVote RPC from Raft candidates."""
-        data = await request.json()
         return await raft_node.handle_request_vote(data)
 
     @app.post("/raft/append-entries", tags=["Raft"])
-    async def append_entries(request: Request):
+    async def append_entries(data: dict):
         """Handle AppendEntries RPC (heartbeat + log replication)."""
-        data = await request.json()
         return await raft_node.handle_append_entries(data)
 
     @app.get("/raft/state", tags=["Raft"])
@@ -217,9 +226,8 @@ def create_app() -> FastAPI:
     # --- Lock Manager Endpoints ---
 
     @app.post("/lock/acquire", tags=["Lock Manager"])
-    async def acquire_lock(request: Request):
+    async def acquire_lock(data: dict):
         """Acquire a distributed lock on a resource."""
-        data = await request.json()
         return await lock_manager.acquire_lock(
             resource=data.get("resource", ""),
             client_id=data.get("client_id", ""),
@@ -229,9 +237,8 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/lock/release", tags=["Lock Manager"])
-    async def release_lock(request: Request):
+    async def release_lock(data: dict):
         """Release a distributed lock."""
-        data = await request.json()
         return await lock_manager.release_lock(
             resource=data.get("resource", ""),
             client_id=data.get("client_id", ""),
@@ -250,9 +257,8 @@ def create_app() -> FastAPI:
     # --- Queue System Endpoints ---
 
     @app.post("/queue/push", tags=["Queue System"])
-    async def push_message(request: Request):
+    async def push_message(data: dict):
         """Push a message to a distributed queue topic."""
-        data = await request.json()
         return await queue_system.push_message(
             topic=data.get("topic", "default"),
             data=data.get("data"),
@@ -261,21 +267,20 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/queue/consume", tags=["Queue System"])
-    async def consume_message(request: Request):
+    async def consume_message(data: dict):
         """Consume a message from a queue topic."""
-        data = await request.json()
         return await queue_system.consume_message(
             topic=data.get("topic", "default"),
             consumer_id=data.get("consumer_id", "anonymous"),
         )
 
     @app.post("/queue/ack", tags=["Queue System"])
-    async def ack_message(request: Request):
+    async def ack_message(data: dict):
         """Acknowledge a consumed message."""
-        data = await request.json()
         return await queue_system.ack_message(
             message_id=data.get("message_id", ""),
             consumer_id=data.get("consumer_id", "anonymous"),
+            topic=data.get("topic", ""),
         )
 
     @app.get("/queue/status", tags=["Queue System"])
@@ -296,9 +301,8 @@ def create_app() -> FastAPI:
         return await cache_system.read(key)
 
     @app.put("/cache/{key}", tags=["Cache (MESI)"])
-    async def cache_write(key: str, request: Request):
+    async def cache_write(key: str, data: dict):
         """Write a value to the distributed cache (MESI protocol)."""
-        data = await request.json()
         return await cache_system.write(key, data.get("value"))
 
     @app.delete("/cache/{key}", tags=["Cache (MESI)"])
@@ -319,18 +323,16 @@ def create_app() -> FastAPI:
     # --- Cache Snoop Protocol (Internal) ---
 
     @app.post("/cache/snoop/read", tags=["Cache Snoop"])
-    async def snoop_read(request: Request):
+    async def snoop_read(data: dict):
         """Handle snoop read (BusRd) from a peer node."""
-        data = await request.json()
         return cache_system.handle_snoop_read(
             key=data.get("key", ""),
             requester=data.get("requester", ""),
         )
 
     @app.post("/cache/snoop/invalidate", tags=["Cache Snoop"])
-    async def snoop_invalidate(request: Request):
+    async def snoop_invalidate(data: dict):
         """Handle snoop invalidate (BusRdX) from a peer node."""
-        data = await request.json()
         return cache_system.handle_snoop_invalidate(
             key=data.get("key", ""),
             requester=data.get("requester", ""),

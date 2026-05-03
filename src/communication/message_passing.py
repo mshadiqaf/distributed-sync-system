@@ -52,6 +52,7 @@ class NodeClient:
         data: Dict[str, Any] = None,
         method: str = "POST",
         retries: int = MAX_RETRIES,
+        timeout: float = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Send a request to a specific peer with retry logic.
@@ -72,11 +73,11 @@ class NodeClient:
         for attempt in range(retries + 1):
             try:
                 if method == "POST":
-                    response = await client.post(url, json=data or {})
+                    response = await client.post(url, json=data or {}, timeout=timeout)
                 elif method == "GET":
-                    response = await client.get(url, params=data)
+                    response = await client.get(url, params=data, timeout=timeout)
                 else:
-                    response = await client.request(method, url, json=data)
+                    response = await client.request(method, url, json=data, timeout=timeout)
 
                 if response.status_code == 200:
                     return response.json()
@@ -86,7 +87,7 @@ class NodeClient:
                     )
                     return None
 
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            except httpx.RequestError as e:
                 if attempt < retries:
                     delay = RETRY_BASE_DELAY * (2 ** attempt)
                     logger.debug(
@@ -109,6 +110,8 @@ class NodeClient:
         data: Dict[str, Any] = None,
         method: str = "POST",
         exclude: List[str] = None,
+        timeout: float = None,
+        retries: int = 1,
     ) -> Dict[str, Optional[Dict[str, Any]]]:
         """
         Broadcast a request to all peers concurrently.
@@ -128,7 +131,7 @@ class NodeClient:
         for peer in self.peers:
             if peer not in exclude:
                 tasks[peer] = self.send_to_peer(
-                    peer, path, data, method, retries=1
+                    peer, path, data, method, retries=retries, timeout=timeout
                 )
 
         if not tasks:

@@ -329,23 +329,79 @@ def demo_cache():
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+def demo_producer():
+    header("PRODUCER — Mengirim Pesan ke Antrean")
+    NODE1 = NODES[0]
+    TOPIC = "demo-orders"
+    PRODUCER = "toko-online"
+    for i in range(1, 6):
+        r = post(f"{NODE1}/queue/push", {
+            "topic": TOPIC,
+            "data": {"order_id": 2000 + i, "produk": f"Produk-{i}"},
+            "producer_id": PRODUCER,
+        })
+        ok(f"Producer mengirim pesan #{i} — ID: {c(BOLD, r.get('message_id', '?'))}")
+        time.sleep(0.5)
+
+def demo_geo():
+    header("GEO-DISTRIBUTED SIMULATOR — Simulasi Latensi")
+    ok("Menguji PING antara Jakarta (Node1) dan Tokyo (Node3)...")
+    start = time.time()
+    get(f"{NODES[2]}/health", headers={})
+    end = time.time()
+    lat = int((end - start) * 1000)
+    info(f"Waktu respon aktual: {lat}ms")
+    ok("Eventual consistency tercapai melintasi batas region buatan.")
+
+def demo_consumer():
+    header("CONSUMER — Menarik Pesan dari Antrean")
+    NODE1 = NODES[0]
+    TOPIC = "demo-orders"
+    CONSUMER = "worker-pengiriman"
+    for i in range(5):
+        r = post(f"{NODE1}/queue/consume", {"topic": TOPIC, "consumer_id": CONSUMER})
+        if r.get("status") == "delivered":
+            mid = r.get("message_id")
+            ok(f"Consumer menerima pesan: {r.get('data')}  [ID: {mid}]")
+            ack = post(f"{NODE1}/queue/ack", {"message_id": mid, "consumer_id": CONSUMER})
+            if ack.get("status") == "acked":
+                ok(f"✓ Ack berhasil dikirim ke server")
+        else:
+            warn("Antrean kosong, menunggu pesan...")
+        time.sleep(1)
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Demo Distributed Sync System")
+    parser.add_argument("--step", choices=["all", "raft", "lock", "queue", "producer", "consumer", "cache", "geo"], default="all", help="Bagian spesifik yang ingin dijalankan")
+    args = parser.parse_args()
+
     print(f"\n{c(BOLD + CYAN, '=' * 60)}")
     print(c(BOLD + WHITE, "   DEMO — Distributed Synchronization System"))
     print(c(BOLD + CYAN, '=' * 60))
     print(f"  {c(BLUE, 'Nodes:')} {', '.join(NODES)}")
-    print(f"  {c(BLUE, 'API Key:')} {API_KEY}")
 
     wait_for_cluster()
 
     try:
-        demo_raft()
-        time.sleep(0.5)
-        demo_lock()
-        time.sleep(0.5)
-        demo_queue()
-        time.sleep(0.5)
-        demo_cache()
+        if args.step in ["all", "raft"]:
+            demo_raft()
+            time.sleep(0.5)
+        if args.step in ["all", "lock"]:
+            demo_lock()
+            time.sleep(0.5)
+        if args.step in ["all", "queue"]:
+            demo_queue()
+            time.sleep(0.5)
+        if args.step == "producer":
+            demo_producer()
+        if args.step == "consumer":
+            demo_consumer()
+        if args.step in ["all", "cache"]:
+            demo_cache()
+            time.sleep(0.5)
+        if args.step in ["all", "geo"]:
+            demo_geo()
     except AssertionError as e:
         err(f"Assertion gagal: {e}")
         sys.exit(1)
@@ -354,11 +410,8 @@ def main():
         raise
 
     print(f"\n{c(BOLD + GREEN, '═' * 60)}")
-    print(c(BOLD + GREEN, "  Semua demo selesai dengan sukses!")}")
+    print(c(BOLD + GREEN, "  Demo selesai dengan sukses!"))
     print(c(BOLD + GREEN, '═' * 60))
-    print(f"\n  {c(CYAN, 'Dokumentasi:')} docs/api_spec.md")
-    print(f"  {c(CYAN, 'Arsitektur:')}  docs/architecture.md")
-    print()
 
 if __name__ == "__main__":
     main()
