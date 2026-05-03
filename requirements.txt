@@ -8,3 +8,4 @@ python-dotenv==1.0.1
 matplotlib==3.9.0
 pytest==8.3.0
 pytest-asyncio==0.24.0
+locust==2.31.1
