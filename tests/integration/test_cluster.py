@@ -113,22 +113,28 @@ class TestMESICache:
         assert len(cache.cache) == 3
         await cache.stop()
 
-    def test_snoop_invalidate(self):
+    @pytest.mark.asyncio
+    async def test_snoop_invalidate(self):
         cache = MESICache("n1", "http://n1:8001", [], max_size=10)
+        await cache.start()
         cache.cache["k1"] = __import__('src.nodes.cache_node', fromlist=['CacheLine']).CacheLine(
             key="k1", value="v1", state=CacheState.SHARED
         )
         result = cache.handle_snoop_invalidate("k1", "n2")
         assert result["invalidated"]
         assert cache.cache["k1"].state == CacheState.INVALID
+        await cache.stop()
 
-    def test_snoop_read_m_to_s(self):
+    @pytest.mark.asyncio
+    async def test_snoop_read_m_to_s(self):
         from src.nodes.cache_node import CacheLine
         cache = MESICache("n1", "http://n1:8001", [], max_size=10)
+        await cache.start()
         cache.cache["k1"] = CacheLine(key="k1", value="v1", state=CacheState.MODIFIED)
         result = cache.handle_snoop_read("k1", "n2")
         assert result["has_data"]
         assert cache.cache["k1"].state == CacheState.SHARED
+        await cache.stop()
 
     def test_cache_stats(self):
         cache = MESICache("n1", "http://n1:8001", [], max_size=10, metrics=self.metrics)

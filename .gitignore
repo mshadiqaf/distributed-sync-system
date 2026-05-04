@@ -7,6 +7,7 @@ CLAUDE.md
 .claude/
 prompt_architecture_diagram.md
 youtube_video_script.md
+youtube_caption.md
 
 # Demo scripts (local only)
 # scripts/
@@ -46,6 +47,3 @@ docker/data/
 # Benchmark outputs
 benchmarks/results/
 benchmarks/graphs/
-
-# Reports
-*.pdf
