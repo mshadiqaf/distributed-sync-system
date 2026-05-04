@@ -11,7 +11,7 @@
 
 | Item | Link |
 |---|---|
-| Video YouTube | [https://youtu.be/XXXXX](https://youtu.be/XXXXX) |
+| Video YouTube | [https://youtu.be/VJmHzKOrkEc](https://youtu.be/VJmHzKOrkEc) |
 | Repository | [github.com/mshadiqaf/distributed-sync-system](https://github.com/mshadiqaf/distributed-sync-system) |
 
 ### Identitas
