@@ -13,6 +13,7 @@
 |---|---|
 | Video YouTube | [https://youtu.be/VJmHzKOrkEc](https://youtu.be/VJmHzKOrkEc) |
 | Repository | [github.com/mshadiqaf/distributed-sync-system](https://github.com/mshadiqaf/distributed-sync-system) |
+| Report | [https://drive.google.com/file/d/1VMNO1ZKQGoZCmubjGOkQ3ka-30aEFlLQ/view?usp=sharing](https://drive.google.com/file/d/1VMNO1ZKQGoZCmubjGOkQ3ka-30aEFlLQ/view?usp=sharing) |
 
 ### Identitas
 
